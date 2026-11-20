@@ -1,0 +1,275 @@
+
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snack Inventory</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6fa;color:#202938;font-family:Arial,sans-serif}
+header{background:#172b4d;color:white;padding:20px}
+header h2{margin:0 0 6px}
+main{max-width:850px;margin:auto;padding:16px}
+.card{background:white;border-radius:13px;padding:16px;margin:12px 0;box-shadow:0 2px 9px #0000000c}
+input,button,select{width:100%;padding:12px;margin:6px 0;border-radius:8px;border:1px solid #d6dce5;font-size:15px}
+button{background:#1769e0;color:white;border:0;font-weight:bold}
+button.secondary{background:#e8eef8;color:#17345d}
+button.danger{background:#c93636}
+.row{display:flex;gap:8px}
+.row>*{flex:1;min-width:0}
+.item{border-bottom:1px solid #eee;padding:12px 0}
+.item:last-child{border:0}
+.muted{color:#68758a;font-size:13px}
+.price{font-weight:bold;color:#1263c4}
+.hidden{display:none!important}
+h3{margin-top:4px}
+#message{padding:10px;color:#b42318}
+</style>
+</head>
+<body>
+<header>
+<h2>🍪 Snack Inventory</h2>
+<div>ဆိုင်သုံး ကုန်ပစ္စည်းစာရင်း</div>
+</header>
+<main>
+<div id="login" class="card">
+<h3>အကောင့်ဝင်ရန်</h3>
+<input id="email" type="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button onclick="loginUser()">Login ဝင်မယ်</button>
+<div id="message"></div>
+</div>
+
+<div id="app" class="hidden">
+<div class="card">
+<div class="row">
+<div>
+<strong id="userName">အသုံးပြုသူ</strong>
+<div class="muted" id="userRole"></div>
+</div>
+<button class="secondary" onclick="logout()">ထွက်မယ်</button>
+</div>
+</div>
+
+<div class="card">
+<h3>🔎 ပစ္စည်းရှာရန်</h3>
+<input id="search" placeholder="ပစ္စည်းအမည် ရိုက်ရှာပါ..." oninput="renderProducts()">
+<div id="products"></div>
+</div>
+
+<div id="addCard" class="card hidden">
+<h3>➕ ပစ္စည်းအသစ်ထည့်ရန်</h3>
+<input id="pname" placeholder="ပစ္စည်းအမည်">
+<div class="row">
+<input id="cost" type="number" min="0" placeholder="အရင်းဈေး">
+<input id="wholesale" type="number" min="0" placeholder="လက်ကားဈေး">
+</div>
+<div class="row">
+<input id="stock" type="number" min="0" placeholder="လက်ကျန်အရေအတွက်">
+<input id="unit" placeholder="ယူနစ် (ခု/ထုပ်)" value="ခု">
+</div>
+<button onclick="addProduct()">ပစ္စည်းသိမ်းမယ်</button>
+</div>
+
+<div id="settings" class="card hidden">
+<h3>⚙️ Admin Settings</h3>
+<label><input id="staffPermission" type="checkbox" style="width:auto"> ဝန်ထမ်းများကို ပစ္စည်းစာရင်း ထည့်/ပြင်ခွင့်ပေးမယ်</label>
+<button onclick="saveSettings()">ခွင့်ပြုချက် သိမ်းမယ်</button>
+<p class="muted">ဝန်ထမ်းအကောင့်အသစ်များကို Supabase Authentication မှာ Admin က ဖန်တီးပေးရပါမယ်။</p>
+</div>
+</div>
+</main>
+
+<script>
+const SUPABASE_URL = "https://gawqsrmxyzlmjtvdihut.supabase.co/rest/v1/";
+const SUPABASE_KEY = "(sb_publishable_1VX8GMHnNCCmFF96mSqo5g_hzPhca_w)";
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let currentUser = null;
+let profile = null;
+let products = [];
+let allowStaff = false;
+
+function msg(t){
+ document.getElementById('message').textContent=t;
+}
+
+async function loginUser(){
+ const email=document.getElementById('email').value.trim();
+ const password=document.getElementById('password').value;
+ if(!email || !password){msg('Email နဲ့ Password ဖြည့်ပါ။');return;}
+ const {error}=await db.auth.signInWithPassword({email,password});
+ if(error){msg(error.message);return;}
+ await startApp();
+}
+
+async function startApp(){
+ const {data:{user}}=await db.auth.getUser();
+ if(!user)return;
+ currentUser=user;
+ const {data,error}=await db.from('profiles')
+   .select('*').eq('id',user.id).single();
+ if(error){msg('Profile ဖတ်မရပါ။ '+error.message);return;}
+ profile=data;
+ document.getElementById('login').classList.add('hidden');
+ document.getElementById('app').classList.remove('hidden');
+ document.getElementById('userName').textContent=
+   profile.display_name || user.email;
+ document.getElementById('userRole').textContent=
+   profile.role==='admin'?'Admin':'Staff';
+ document.getElementById('addCard').classList.toggle('hidden',
+   profile.role!=='admin' && !allowStaff);
+ document.getElementById('settings').classList.toggle('hidden',
+   profile.role!=='admin');
+ await loadSettings();
+ await loadProducts();
+}
+
+async function loadSettings(){
+ const {data}=await db.from('app_settings')
+   .select('*').eq('id',1).single();
+ allowStaff=!!data?.allow_staff_inventory;
+ document.getElementById('staffPermission').checked=allowStaff;
+ document.getElementById('addCard').classList.toggle('hidden',
+   profile.role!=='admin' && !allowStaff);
+}
+
+async function saveSettings(){
+ const value=document.getElementById('staffPermission').checked;
+ const {error}=await db.from('app_settings')
+   .update({allow_staff_inventory:value}).eq('id',1);
+ if(error){alert('သိမ်းမရပါ: '+error.message);return;}
+ alert('ခွင့်ပြုချက် သိမ်းပြီးပါပြီ။');
+ await loadSettings();
+}
+
+async function loadProducts(){
+ const {data,error}=await db.from('products')
+   .select('*').order('name');
+ if(error){alert(error.message);return;}
+ products=data||[];
+ renderProducts();
+}
+
+function renderProducts(){
+ const q=document.getElementById('search').value.toLowerCase();
+ const list=products.filter(p=>p.name.toLowerCase().includes(q));
+ const box=document.getElementById('products');
+ box.innerHTML='';
+ if(!list.length){
+   box.textContent='ပစ္စည်း မတွေ့ပါ။';
+   return;
+ }
+ list.forEach(p=>{
+   const div=document.createElement('div');
+   div.className='item';
+   const name=document.createElement('strong');
+   name.textContent=p.name;
+   const details=document.createElement('div');
+   details.className='muted';
+   details.textContent='လက်ကျန်: '+p.stock+' '+p.unit;
+   const price=document.createElement('div');
+   price.className='price';
+   price.textContent='လက်ကားဈေး: '+Number(p.wholesale_price).toLocaleString()+' Ks';
+   div.append(name,details,price);
+   if(profile.role==='admin'){
+     const cost=document.createElement('div');
+     cost.className='muted';
+     cost.textContent='အရင်းဈေး: '+Number(p.cost_price).toLocaleString()+' Ks';
+     div.append(cost);
+     const edit=document.createElement('button');
+     edit.className='secondary';
+     edit.textContent='ဈေးနှုန်း / ပစ္စည်းပြင်ရန်';
+     edit.onclick=()=>editProduct(p);
+     div.append(edit);
+   }
+   if(profile.role==='admin'||allowStaff){
+     const sale=document.createElement('button');
+     sale.textContent='အရောင်းမှတ်မယ်';
+     sale.onclick=()=>sellProduct(p);
+     div.append(sale);
+   }
+   box.append(div);
+ });
+}
+
+async function addProduct(){
+ const name=document.getElementById('pname').value.trim();
+ const cost=Number(document.getElementById('cost').value);
+ const wholesale=Number(document.getElementById('wholesale').value);
+ const stock=Number(document.getElementById('stock').value);
+ const unit=document.getElementById('unit').value.trim()||'ခု';
+ if(!name||cost<0||wholesale<0||stock<0){alert('အချက်အလက်မှန်ကန်စွာ ဖြည့်ပါ။');return;}
+ const {error}=await db.from('products').insert({
+   name,cost_price:cost,wholesale_price:wholesale,stock,unit
+ });
+ if(error){alert(error.message);return;}
+ await logAction('ပစ္စည်းအသစ်ထည့်',name);
+ alert('ပစ္စည်းထည့်ပြီးပါပြီ။');
+ ['pname','cost','wholesale','stock'].forEach(id=>document.getElementById(id).value='');
+ await loadProducts();
+}
+
+async function editProduct(p){
+ const name=prompt('ပစ္စည်းအမည်',p.name);
+ if(name===null)return;
+ const cost=prompt('အရင်းဈေး',p.cost_price);
+ if(cost===null)return;
+ const wholesale=prompt('လက်ကားဈေး',p.wholesale_price);
+ if(wholesale===null)return;
+ const stock=prompt('လက်ကျန်',p.stock);
+ if(stock===null)return;
+ const values=[Number(cost),Number(wholesale),Number(stock)];
+ if(!name.trim()||values.some(v=>!Number.isFinite(v)||v<0)){
+   alert('အချက်အလက်မှားနေပါတယ်။');return;
+ }
+ const {error}=await db.from('products').update({
+   name:name.trim(),cost_price:values[0],
+   wholesale_price:values[1],stock:values[2],
+   updated_at:new Date().toISOString()
+ }).eq('id',p.id);
+ if(error){alert(error.message);return;}
+ await logAction('ပစ္စည်းပြင်ဆင်',name);
+ await loadProducts();
+}
+
+async function sellProduct(p){
+ const qty=Number(prompt(p.name+' ရောင်းမည့်အရေအတွက်',1));
+ if(!Number.isFinite(qty)||qty<=0)return;
+ if(qty>Number(p.stock)){alert('လက်ကျန် မလုံလောက်ပါ။');return;}
+ const {error}=await db.from('products').update({
+   stock:Number(p.stock)-qty,
+   updated_at:new Date().toISOString()
+ }).eq('id',p.id);
+ if(error){alert(error.message);return;}
+ await logAction('အရောင်း',p.name+' - '+qty+' '+p.unit);
+ alert('အရောင်းမှတ်တမ်း ပြီးပါပြီ။');
+ await loadProducts();
+}
+
+async function logAction(action,details){
+ await db.from('activity_logs').insert({
+   user_id:currentUser.id,action,details
+ });
+}
+
+async function logout(){
+ await db.auth.signOut();
+ location.reload();
+}
+
+db.auth.onAuthStateChange((event,session)=>{
+ if(event==='SIGNED_IN' && session && !currentUser){
+   setTimeout(startApp,0);
+ }
+});
+
+(async()=>{
+ const {data:{session}}=await db.auth.getSession();
+ if(session)await startApp();
+})();
+</script>
+</body>
+</html>
