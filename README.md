@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Snack Inventory</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
 body{font-family:Arial,sans-serif;background:#f3f5f8;margin:0;padding:16px;color:#222}
 .container{max-width:750px;margin:auto}
