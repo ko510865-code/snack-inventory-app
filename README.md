@@ -68,7 +68,7 @@ button.danger{background:#c0392b}
 </div>
 
 <script>
-const SUPABASE_URL = "[YOUR_PROJECT_URL](https://gawqsrmxyzlmjtvdihut.supabase.co/rest/v1/)";
+const SUPABASE_URL = "https://gawqsrmxyzlmjtvdihut.supabase.co/rest/v1/";
 const SUPABASE_KEY = "sb_publishable_1VX8GMHnNCCmFF96mSqo5g_hzPhca_w";
 
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
